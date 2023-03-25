@@ -1,6 +1,4 @@
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
 
 public class Fila {
 
@@ -11,7 +9,8 @@ public class Fila {
 
     private double tempoGlobal;
     private double[] deltaTempo;
-    private Double saida, chegada;
+    private Double chegada;
+    private PriorityQueue<Double> saidas;
 
     private int losses;
     private final StringBuilder LOG;
@@ -22,14 +21,14 @@ public class Fila {
         this.losses = 0;
         this.servidores = servidores;
         this.deltaTempo = new double[this.capacidade + 1];
+        this.saidas = new PriorityQueue<>(Double::compare);
+        this.chegada = null;
         this.taxaDeSaida0 = taxaDeSaida0;
         this.taxaDeSaida1 = taxaDeSaida1;
         this.taxaDeEntrada0 = taxaDeEntrada0;
         this.taxaDeEntrada1 = taxaDeEntrada1;
         this.LOG = new StringBuilder();
         this.LOG2 = new StringBuilder();
-        this.saida = null;
-        this.chegada = null;
     }
 
     public void run(long executions, double initialTime, long... seeds) {
@@ -37,9 +36,11 @@ public class Fila {
         double[] avarage = new double[this.capacidade + 2];
         for (var seed : seeds) {
             RNG rand = new RNG(seed);
-            for (int i = 0; i < executions; i++) {
+            for (int i = 0; i <= executions; i++) {
                 if (this.chegada == null) {
                     this.chegada = initialTime;
+                    this.LOG2.append("[AGENDANDO CHEGADA] - " + this.chegada).append("\n");
+                    // this.saida = initialTime + taxaDeSaida0 + Math.random() * (taxaDeSaida1 - taxaDeSaida0);
                     continue;
                 }
                 operation(rand);
@@ -53,33 +54,46 @@ public class Fila {
 
     private void operation(RNG rand) {
         double aux = this.tempoGlobal;
-        if ((this.saida == null) || (this.chegada < this.saida)) {
-            this.tempoGlobal = chegada;
-            this.deltaTempo[this.ocupados] += (this.tempoGlobal - aux);
-            this.LOG2.append("CHEGADA PARA: " + this.chegada).append("\n");
-            if (ocupados < capacidade) {
+        if ((this.saidas.isEmpty()) || (this.chegada < this.saidas.peek())) {
+            this.tempoGlobal = chegada; // atualizando tempo global
+            this.deltaTempo[this.ocupados] += (this.tempoGlobal - aux); // modificando delta tempo
+            this.LOG2.append("[CHEGANDO] - " + this.chegada).append("\n");
+            if (ocupados < capacidade) { // posso ocupar a fila?
                 this.ocupados++;
-                if (this.ocupados <= this.servidores) this.agendaSaida(rand);
+                if (this.ocupados <= this.servidores) { // estou de frente para o servidor?
+                    this.agendaSaida(rand);
+                    this.LOG2.append("[AGENDANDO SAIDA] - " + this.saidas.peek()).append("\n");
+                }
             } else this.losses++;
 
             this.agendaChegada(rand);
+            this.LOG2.append("[AGENDANDO CHEGADA] - " + this.chegada).append("\n");
         } else {
-            this.tempoGlobal = this.saida;
+            this.tempoGlobal = this.saidas.poll();
             this.deltaTempo[this.ocupados] += (this.tempoGlobal - aux);
             this.ocupados--;
-            this.LOG2.append("SAIDA PARA: " + this.saida).append("\n");
-            if (this.ocupados >= this.servidores) this.agendaSaida(rand);
-            else this.saida = null;
+            this.LOG2.append("[SAINDO] " + this.tempoGlobal).append("\n");
+            if (this.ocupados >= this.servidores) { // tem servidores disponivel
+                double saidaAgendada = this.agendaSaida(rand);
+                this.LOG2.append("[AGENDANDO SAIDA] - " + saidaAgendada).append("\n");
+            }
         }
-        this.LOG2.append("TEMPO ATUAL: " + this.tempoGlobal).append("\n");
+        //this.LOG2.append("TEMPO ATUAL: " + this.tempoGlobal).append("\n");
     }
 
-    private void agendaSaida(RNG r) {
-        this.saida = this.tempoGlobal + (taxaDeSaida0 + r.next() * (taxaDeSaida1 - taxaDeSaida0));
+
+    private double agendaSaida(RNG r) {
+        double n = r.next();
+        double result = this.tempoGlobal + (taxaDeSaida0 + n * (taxaDeSaida1 - taxaDeSaida0));
+        this.saidas.add(result);
+        this.LOG2.append("[RAND] - " + n).append("\n");
+        return result;
     }
 
     private void agendaChegada(RNG r) {
-        this.chegada = this.tempoGlobal + (taxaDeEntrada0 + r.next() * (taxaDeEntrada1 - taxaDeEntrada0));
+        double n = r.next();
+        this.chegada = this.tempoGlobal + (taxaDeEntrada0 + n * (taxaDeEntrada1 - taxaDeEntrada0));
+        this.LOG2.append("[RAND] - " + n).append("\n");
     }
 
     private void makeLog(long seed) {
@@ -99,7 +113,7 @@ public class Fila {
     }
 
     private void makeLog(double[] avarage) {
-        this.LOG.append("===== Avarage ==== \n");
+        this.LOG.append("===== Average ==== \n");
         this.LOG.append(String.format("STATE | TIME | PROBABILITY %n"));
 
         double aux = 0;
@@ -117,7 +131,7 @@ public class Fila {
     private void clear(long numberOfSeeds, double save[]){
         this.tempoGlobal = 0;
         this.ocupados = 0;
-        this.saida = null;
+        this.saidas = new PriorityQueue<>();
         this.chegada = null;
 
         for(int i = 0; i < this.deltaTempo.length; i++) save[i] += (this.deltaTempo[i] / numberOfSeeds);

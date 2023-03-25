@@ -11,6 +11,6 @@ public class RNG {
         x ^= (x >>> 35);
         x ^= (x << 4);
         seed = x;
-        return (double) x / Long.MAX_VALUE;
+        return Math.abs((double) x / Long.MAX_VALUE);
     }
 }
